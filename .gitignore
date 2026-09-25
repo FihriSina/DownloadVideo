@@ -1,75 +1,30 @@
-# Virtual Environment
+
+# Virtual environments
 .venv/
 venv/
 env/
 
-# ==========================
-# Media Downloads
-# ==========================
+# Git
+.git/
 
+# Downloads
 Downloads/
 downloads/
+
+# Media files
 *.mp4
 *.webm
 *.mkv
 *.mov
-*.avi
 *.jpg
 *.jpeg
 *.png
 *.webp
 
-
-# ==========================
-# Metadata outputs
-# ==========================
-
-*.txt
-*.json
-
-
-# ==========================
-# Python
-# ==========================
-
+# Python cache
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
 
-# Virtual environment
-venv/
-env/
-.venv/
-
-
-# ==========================
 # IDE
-# ==========================
-
 .vscode/
 .idea/
-
-
-# ==========================
-# OS
-# ==========================
-
-.DS_Store
-Thumbs.db
-
-
-# ==========================
-# Logs
-# ==========================
-
-*.log
-logs/
-
-
-# ==========================
-# Temporary files
-# ==========================
-
-*.tmp
-*.temp
-.cache/
