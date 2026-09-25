@@ -1,11 +1,27 @@
 .venv/
 venv/
 env/
+
 Downloads/
 downloads/
+
 __pycache__/
 *.pyc
+
 .vscode/
 .idea/
+
 .DS_Store
 Thumbs.db
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Release installer
+release/
+
+# Temporary
+*.log
+*.tmp
