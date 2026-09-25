@@ -21,21 +21,23 @@ def create_metadata(info, url, path):
         f.write(text)
 
 
-def download_media(url):
+def download_media(url, download_video=True, download_thumbnail=True, create_text=True):
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     opts = {
         "outtmpl": os.path.join(DOWNLOAD_DIR, "%(uploader)s_%(title)s_%(id)s.%(ext)s"),
-        "format": "bestvideo*+bestaudio/best",
+        "format": "bestvideo*+bestaudio/best" if download_video else "best",
         "merge_output_format": "mp4",
-        "writethumbnail": True,
         "ignoreerrors": True,
     }
 
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+    if download_thumbnail:
+        opts["writethumbnail"] = True
 
-        if info:
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=download_video)
+
+        if info and create_text:
             filename = os.path.join(
                 DOWNLOAD_DIR,
                 f"{info.get('title','media')}_metadata.txt"
