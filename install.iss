@@ -1,11 +1,11 @@
 [Setup]
-AppName=Universal Media Archiver
+AppName=UniversalMediaArchiver
 AppVersion=1.0.0
-DefaultDirName={autopf}\Universal Media Archiver
+DefaultDirName={autopf}\UniversalMediaArchiver
 SetupIconFile=assets\app_icon.ico
 
 [Files]
 Source: "dist\UniversalMediaArchiver.exe"; DestDir: "{app}"
 
 [Icons]
-Name: "{commondesktop}\Universal Media Archiver"; Filename: "{app}\UniversalMediaArchiver.exe"
+Name: "{commondesktop}\UniversalMediaArchiver"; Filename: "{app}\UniversalMediaArchiver.exe"
