@@ -1,4 +1,4 @@
-# Universal Media Archiver
+# Download Video
 
 Desktop application starter for downloading public media from supported platforms using yt-dlp.
 
