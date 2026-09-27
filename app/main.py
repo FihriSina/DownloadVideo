@@ -4,11 +4,21 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, QPoint, QSettings, QPropertyAnimation, QEasingCurve, QEvent
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QFrame,
-    QLineEdit, QPushButton, QSizePolicy, QMessageBox
+    QApplication,
+    QWidget,
+    QLabel,
+    QVBoxLayout,
+    QHBoxLayout,
+    QFrame,
+    QLineEdit,
+    QPushButton,
+    QSizePolicy,
+    QMessageBox,
+    QAbstractButton,
 )
 
 from downloader import download_media
+
 
 LIGHT_STYLE = """
 QWidget {
@@ -130,6 +140,7 @@ QPushButton#closeButton:hover {
     color: white;
 }
 """
+
 
 DARK_STYLE = """
 QWidget {
@@ -257,7 +268,6 @@ class TopBar(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_window = parent
-        self.drag_pos = None
         self.setObjectName("titleBar")
 
         layout = QHBoxLayout(self)
@@ -291,34 +301,24 @@ class TopBar(QFrame):
         layout.addWidget(self.max_btn)
         layout.addWidget(self.close_btn)
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_pos = event.globalPosition().toPoint() - self.parent_window.frameGeometry().topLeft()
-            event.accept()
-
-    def mouseMoveEvent(self, event):
-        if self.drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
-            if self.parent_window.isMaximized():
-                self.parent_window.showNormal()
-                self.drag_pos = QPoint(self.width() // 2, 16)
-            self.parent_window.move(event.globalPosition().toPoint() - self.drag_pos)
-            event.accept()
-
-    def mouseReleaseEvent(self, event):
-        self.drag_pos = None
-        event.accept()
-
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.parent_window.toggle_max_restore()
             event.accept()
+            return
+
+        super().mouseDoubleClickEvent(event)
 
 
 class App(QWidget):
     def __init__(self):
         super().__init__()
+
         self.settings = QSettings("UniversalMediaArchiver", "Preferences")
         self.dark_mode = self.settings.value("dark_mode", False, type=bool)
+
+        # Sadece native pencere taşıma kullanılamazsa devreye girecek yedek sürükleme konumu.
+        self._fallback_drag_offset = None
 
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -340,7 +340,10 @@ class App(QWidget):
 
         self.main_panel = QFrame()
         self.main_panel.setObjectName("mainPanel")
-        self.main_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.main_panel.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
 
         panel_layout = QVBoxLayout(self.main_panel)
         panel_layout.setContentsMargins(30, 24, 30, 30)
@@ -359,7 +362,9 @@ class App(QWidget):
 
         panel_layout.addSpacing(10)
 
-        self.panel_subtitle = QLabel("Download and archive videos, images, thumbnails and metadata")
+        self.panel_subtitle = QLabel(
+            "Download and archive videos, images, thumbnails and metadata"
+        )
         self.panel_subtitle.setObjectName("panelSubtitle")
         self.panel_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         panel_layout.addWidget(self.panel_subtitle)
@@ -376,9 +381,11 @@ class App(QWidget):
         options_row = QHBoxLayout()
         options_row.setSpacing(12)
         options_row.addStretch()
+
         self.thumbnail_btn = self._make_option_button("✓  🖼  Thumbnail")
         self.video_btn = self._make_option_button("✓  🎥  Video / Images")
         self.metadata_btn = self._make_option_button("✓  📄  Metadata")
+
         options_row.addWidget(self.thumbnail_btn)
         options_row.addWidget(self.video_btn)
         options_row.addWidget(self.metadata_btn)
@@ -389,10 +396,12 @@ class App(QWidget):
 
         action_row = QHBoxLayout()
         action_row.addStretch()
+
         self.download_btn = QPushButton("⬇  DOWNLOAD")
         self.download_btn.setObjectName("downloadButton")
         self.download_btn.setFixedSize(220, 48)
         self.download_btn.clicked.connect(self.start_download)
+
         action_row.addWidget(self.download_btn)
         action_row.addStretch()
         panel_layout.addLayout(action_row)
@@ -411,6 +420,11 @@ class App(QWidget):
         self.load_preferences()
         self.update_theme_button_text()
         self.apply_theme(initial=True)
+
+        # Arayüz tamamen oluşturulduktan sonra bütün mevcut widget'larda
+        # pencere sürükleme filtresini etkinleştir.
+        self.enable_window_dragging()
+
         self.animate_in()
 
     def _make_option_button(self, text):
@@ -422,23 +436,110 @@ class App(QWidget):
         btn.setFixedHeight(42)
         return btn
 
+    def enable_window_dragging(self):
+        """
+        Buton ve URL giriş alanı dışındaki mevcut widget'lara tıklandığında
+        pencerenin Windows'un native taşıma mekanizmasıyla sürüklenmesini sağlar.
+        Görsel olarak yeni bir title bar/panel eklemez.
+        """
+        self.installEventFilter(self)
+
+        for widget in self.findChildren(QWidget):
+            widget.installEventFilter(self)
+
+    def _is_interactive_widget(self, widget):
+        """Tıklamanın kendi normal işlevini koruması gereken kontrolleri bulur."""
+        current = widget if isinstance(widget, QWidget) else None
+
+        while current is not None:
+            if isinstance(current, (QAbstractButton, QLineEdit)):
+                return True
+
+            if current is self:
+                break
+
+            current = current.parentWidget()
+
+        return False
+
+    def eventFilter(self, obj, event):
+        """
+        Boş alan, QLabel ve QFrame gibi pasif bölgelerden pencereyi taşır.
+        QPushButton ve QLineEdit üzerinde ise hiçbir sürükleme başlatmaz.
+        """
+        if not isinstance(obj, QWidget) or self._is_interactive_widget(obj):
+            return super().eventFilter(obj, event)
+
+        if event.type() == QEvent.Type.MouseButtonPress:
+            if event.button() == Qt.MouseButton.LeftButton:
+                global_pos = event.globalPosition().toPoint()
+                self._fallback_drag_offset = global_pos - self.frameGeometry().topLeft()
+
+                # Windows/macOS/Linux pencere yöneticisinin native taşıma sistemini kullan.
+                window_handle = self.windowHandle()
+                if window_handle is not None and window_handle.startSystemMove():
+                    self._fallback_drag_offset = None
+                    return True
+
+                # startSystemMove desteklenmezse aşağıdaki MouseMove yedeği kullanılır.
+                return True
+
+        elif event.type() == QEvent.Type.MouseMove:
+            if (
+                self._fallback_drag_offset is not None
+                and event.buttons() & Qt.MouseButton.LeftButton
+            ):
+                if self.isMaximized():
+                    self.showNormal()
+                    self._fallback_drag_offset = QPoint(self.width() // 2, 20)
+
+                self.move(
+                    event.globalPosition().toPoint() - self._fallback_drag_offset
+                )
+                return True
+
+        elif event.type() == QEvent.Type.MouseButtonRelease:
+            if self._fallback_drag_offset is not None:
+                self._fallback_drag_offset = None
+                return True
+
+        return super().eventFilter(obj, event)
+
     def load_preferences(self):
-        self.thumbnail_btn.setChecked(self.settings.value("download_thumbnail", True, type=bool))
-        self.video_btn.setChecked(self.settings.value("download_video", True, type=bool))
-        self.metadata_btn.setChecked(self.settings.value("create_text", True, type=bool))
+        self.thumbnail_btn.setChecked(
+            self.settings.value("download_thumbnail", True, type=bool)
+        )
+        self.video_btn.setChecked(
+            self.settings.value("download_video", True, type=bool)
+        )
+        self.metadata_btn.setChecked(
+            self.settings.value("create_text", True, type=bool)
+        )
 
     def save_preferences(self):
-        self.settings.setValue("download_thumbnail", self.thumbnail_btn.isChecked())
-        self.settings.setValue("download_video", self.video_btn.isChecked())
-        self.settings.setValue("create_text", self.metadata_btn.isChecked())
+        self.settings.setValue(
+            "download_thumbnail",
+            self.thumbnail_btn.isChecked(),
+        )
+        self.settings.setValue(
+            "download_video",
+            self.video_btn.isChecked(),
+        )
+        self.settings.setValue(
+            "create_text",
+            self.metadata_btn.isChecked(),
+        )
         self.settings.setValue("dark_mode", self.dark_mode)
 
     def update_theme_button_text(self):
-        self.top_bar.theme_btn.setText("☀ Light Mode" if self.dark_mode else "🌙 Dark Mode")
+        self.top_bar.theme_btn.setText(
+            "☀ Light Mode" if self.dark_mode else "🌙 Dark Mode"
+        )
 
     def apply_theme(self, initial=False):
         self.setStyleSheet(DARK_STYLE if self.dark_mode else LIGHT_STYLE)
         self.update_theme_button_text()
+
         if not initial:
             self.animate_fade()
 
@@ -482,21 +583,39 @@ class App(QWidget):
             else:
                 self.top_bar.max_btn.setText("⬜")
                 self.root_layout.setContentsMargins(10, 10, 10, 10)
+
         super().changeEvent(event)
 
     def start_download(self):
         url = self.url_input.text().strip()
+
         if not url:
-            QMessageBox.warning(self, "Missing URL", "Please paste a media URL first.")
+            QMessageBox.warning(
+                self,
+                "Missing URL",
+                "Please paste a media URL first.",
+            )
             return
-        if not any([self.thumbnail_btn.isChecked(), self.video_btn.isChecked(), self.metadata_btn.isChecked()]):
-            QMessageBox.warning(self, "No option selected", "Please select at least one download option.")
+
+        if not any(
+            [
+                self.thumbnail_btn.isChecked(),
+                self.video_btn.isChecked(),
+                self.metadata_btn.isChecked(),
+            ]
+        ):
+            QMessageBox.warning(
+                self,
+                "No option selected",
+                "Please select at least one download option.",
+            )
             return
 
         self.save_preferences()
         self.download_btn.setEnabled(False)
         self.status_label.setText("⏳ Downloading...")
         QApplication.processEvents()
+
         try:
             download_media(
                 url,
@@ -505,8 +624,10 @@ class App(QWidget):
                 create_text=self.metadata_btn.isChecked(),
             )
             self.status_label.setText("✅ Completed")
+
         except Exception as exc:
             self.status_label.setText(f"❌ {exc}")
+
         finally:
             self.download_btn.setEnabled(True)
 
@@ -514,6 +635,8 @@ class App(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setApplicationName("Universal Media Archiver")
+
     window = App()
     window.show()
+
     sys.exit(app.exec())
